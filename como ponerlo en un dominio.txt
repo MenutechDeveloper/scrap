@@ -1,0 +1,145 @@
+================================================================================
+GUÍA PASO A PASO: CÓMO PUBLICAR SCRAPFLOW EN INTERNET CON TU DOMINIO PROPIO
+================================================================================
+
+¡Felicidades! ScrapFlow está listo para ser desplegado en internet para que tus
+usuarios y clientes puedan usarlo desde cualquier parte del mundo con tu marca,
+logo y un dominio personalizado (por ejemplo: www.tumarca.com o app.tumarca.com).
+
+A continuación se explican las 2 OPCIONES MÁS RECOMENDADAS para poner este proyecto
+en producción de forma segura, estable y profesional.
+
+--------------------------------------------------------------------------------
+OPCIÓN 1: DESPLIEGUE RÁPIDO EN LA NUBE EN PLATAFORMAS PAAS (RECOMENDADA)
+(Gratis o de muy bajo costo, sin necesidad de administrar un servidor Linux)
+--------------------------------------------------------------------------------
+
+Plataformas recomendadas: Render.com, Railway.app o Fly.io.
+
+1. SUBIR TU CÓDIGO A GITHUB:
+   - Crea un repositorio público o privado en GitHub.
+   - Sube todos los archivos de este proyecto (app.py, scrapling_engine.py, templates/,
+     static/, requirements.txt, etc.).
+
+2. CREAR UN SERVICIO WEB EN RENDER / RAILWAY:
+   - Crea una cuenta en Render.com o Railway.app.
+   - Conecta tu cuenta de GitHub y selecciona el repositorio de ScrapFlow.
+   - En la configuración del servicio Web:
+       * Build Command (Comando de construcción):
+         pip install -r requirements.txt && patchright install chromium
+       * Start Command (Comando de inicio):
+         gunicorn -w 2 -b 0.0.0.0:$PORT app:app
+
+3. CONECTAR TU DOMINIO PROPIO EN RENDER / RAILWAY:
+   - En el panel de Render/Railway, ve a la sección "Settings" -> "Custom Domains".
+   - Escribe tu dominio (ej: app.tumarca.com o tumarca.com).
+   - Ve a la plataforma donde compraste tu dominio (GoDaddy, Namecheap, Cloudflare, etc.)
+     y agrega los registros DNS que te indica Render/Railway:
+       * Registro CNAME para 'app' apuntando al subdominio que te da la plataforma.
+       * O Registro A apuntando a la IP entregada por la plataforma.
+   - ¡Listo! En unos minutos SSL/HTTPS se genera automáticamente y la web estará en vivo.
+
+
+--------------------------------------------------------------------------------
+OPCIÓN 2: DESPLIEGUE EN SERVIDOR VPS PROPIO (UBUNTU 22.04 / 24.04 + NGINX + GUNICORN)
+(Ideal para control total, máximo rendimiento y scraper intensivo)
+--------------------------------------------------------------------------------
+
+Proveedores recomendados de VPS: DigitalOcean, Hetzner, Linode, AWS EC2, Vultr.
+
+PASO 1: Preparar el servidor Linux (Ubuntu)
+--------------------------------------------
+Conéctate por SSH a tu VPS:
+  ssh root@tu_ip_del_servidor
+
+Actualiza los paquetes e instala las herramientas necesarias:
+  sudo apt update && sudo apt upgrade -y
+  sudo apt install python3-pip python3-venv nginx git curl -y
+
+PASO 2: Clonar y configurar la aplicación
+-------------------------------------------
+1. Clona tu proyecto o copia los archivos a la ruta `/var/www/scrapflow`:
+     sudo mkdir -p /var/www/scrapflow
+     sudo chown -R $USER:$USER /var/www/scrapflow
+     cd /var/www/scrapflow
+
+2. Crea el entorno virtual e instala dependencias:
+     python3 -m venv venv
+     source venv/bin/venv/activate
+     pip install -r requirements.txt
+     pip install gunicorn
+     patchright install chromium
+
+PASO 3: Configurar servicio con Systemd (Gunicorn)
+--------------------------------------------------
+Crea un servicio para que Flask/Gunicorn se ejecute automáticamente en segundo plano:
+  sudo nano /etc/systemd/system/scrapflow.service
+
+Pega el siguiente contenido (ajustando tus rutas y usuario):
+
+[Unit]
+Description=Gunicorn Application Server para ScrapFlow
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/var/www/scrapflow
+ExecStart=/var/www/scrapflow/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:5000 app:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
+Inicia y habilita el servicio:
+  sudo systemctl daemon-reload
+  sudo systemctl start scrapflow
+  sudo systemctl enable scrapflow
+
+PASO 4: Configurar Nginx como Proxy Inverso
+--------------------------------------------
+Crea la configuración de Nginx para tu dominio:
+  sudo nano /etc/nginx/sites-available/scrapflow
+
+Pega lo siguiente (reemplaza 'tumarca.com' por tu dominio real):
+
+server {
+    listen 80;
+    server_name tumarca.com www.tumarca.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /static/ {
+        alias /var/www/scrapflow/static/;
+    }
+}
+
+Activa el sitio en Nginx y reinicia:
+  sudo ln -s /etc/nginx/sites-available/scrapflow /etc/nginx/sites-enabled/
+  sudo nginx -t
+  sudo systemctl restart nginx
+
+PASO 5: Configurar tu Dominio DNS
+----------------------------------
+En tu proveedor de dominio (Cloudflare, Namecheap, GoDaddy):
+  1. Agrega un Registro A:
+     - Name: @ (o app)
+     - Value: [La IP pública de tu VPS]
+     - TTL: Auto
+
+PASO 6: Activar Certificado SSL Gratuito con HTTPS (Certbot)
+-------------------------------------------------------------
+Instala Certbot para tener HTTPS/SSL gratuito:
+  sudo apt install certbot python3-certbot-nginx -y
+  sudo certbot --nginx -d tumarca.com -d www.tumarca.com
+
+Certbot renovará tus certificados SSL automáticamente.
+
+--------------------------------------------------------------------------------
+¡TU PROYECTO SCRAPFLOW YA ESTÁ EN PRODUCCIÓN CON TU DOMINIO PROPIO Y SSL ACTIVADO!
+================================================================================
