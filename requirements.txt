@@ -1,0 +1,5 @@
+flask>=3.0.0
+scrapling[all]>=0.4.0
+fpdf2>=2.8.0
+pandas>=2.0.0
+gunicorn>=21.2.0
