@@ -13,11 +13,11 @@ LATEST_SCRAPE_RESULTS = {}
 class PDFExport(FPDF):
     def header(self):
         self.set_font('Helvetica', 'B', 14)
-        self.set_text_color(99, 102, 241) # Brand Primary Color
-        self.cell(0, 10, 'ScrapFlow - Reporte de Extracción', border=False, new_x='LMARGIN', new_y='NEXT', align='L')
+        self.set_text_color(249, 115, 22) # MENUTECH Brand Accent Color
+        self.cell(0, 10, 'MENUTECH - Reporte de Extracción', border=False, new_x='LMARGIN', new_y='NEXT', align='L')
         self.set_font('Helvetica', 'I', 9)
         self.set_text_color(148, 163, 184)
-        self.cell(0, 5, 'Generado con Scrapling Web Intelligence', border=False, new_x='LMARGIN', new_y='NEXT', align='L')
+        self.cell(0, 5, 'Generado con Extractor Web MENUTECH', border=False, new_x='LMARGIN', new_y='NEXT', align='L')
         self.ln(5)
 
     def footer(self):
@@ -37,7 +37,7 @@ def scrape():
     data = request.get_json() or {}
     url = data.get('url', '').strip()
     custom_selector = data.get('selector', '').strip()
-    mode = data.get('mode', 'fast')
+    mode = data.get('mode', 'auto')
 
     if not url:
         return jsonify({"status": "error", "message": "Por favor proporciona una URL válida."}), 400
@@ -55,7 +55,6 @@ def scrape():
 def export_file(fmt):
     global LATEST_SCRAPE_RESULTS
 
-    # Allow passing data via JSON POST or fallback to latest cached result
     if request.method == 'POST':
         data = request.get_json() or {}
     else:
@@ -72,7 +71,7 @@ def export_file(fmt):
     if fmt == 'txt':
         lines = [
             "==================================================",
-            f"  SCRAPFLOW - RESULTADOS DE SCRAPING",
+            f"  MENUTECH - RESULTADOS DE SCRAPING",
             "==================================================",
             f"URL: {url}",
             f"Dominio: {domain}",
@@ -93,14 +92,13 @@ def export_file(fmt):
         return Response(
             output,
             mimetype="text/plain; charset=utf-8",
-            headers={"Content-Disposition": f"attachment;filename=scrapflow_{domain}.txt"}
+            headers={"Content-Disposition": f"attachment;filename=menutech_{domain}.txt"}
         )
 
     # Export CSV / Google Sheets
     elif fmt in ['csv', 'sheets']:
         si = io.StringIO()
         cw = csv.writer(si)
-        # Header row optimized for Google Sheets
         cw.writerow(["ID", "Tipo", "Etiqueta", "Título", "Contenido", "URL Enlace / Imagen", "URL Origen"])
         for b in blocks:
             extra_url = b.get('link_url') or b.get('img_src') or ''
@@ -115,7 +113,7 @@ def export_file(fmt):
             ])
 
         output = si.getvalue()
-        filename = f"scrapflow_google_sheets_{domain}.csv" if fmt == 'sheets' else f"scrapflow_{domain}.csv"
+        filename = f"menutech_google_sheets_{domain}.csv" if fmt == 'sheets' else f"menutech_{domain}.csv"
         return Response(
             output,
             mimetype="text/csv; charset=utf-8",
@@ -128,7 +126,7 @@ def export_file(fmt):
         return Response(
             output,
             mimetype="application/json; charset=utf-8",
-            headers={"Content-Disposition": f"attachment;filename=scrapflow_{domain}.json"}
+            headers={"Content-Disposition": f"attachment;filename=menutech_{domain}.json"}
         )
 
     # Export PDF
@@ -156,7 +154,7 @@ def export_file(fmt):
 
             if b.get('link_url'):
                 pdf.set_font("Helvetica", "I", 9)
-                pdf.set_text_color(99, 102, 241)
+                pdf.set_text_color(249, 115, 22)
                 pdf.cell(0, 5, f"Link: {b['link_url'][:80]}", new_x="LMARGIN", new_y="NEXT")
 
             pdf.ln(3)
@@ -166,7 +164,7 @@ def export_file(fmt):
             pdf_bytes,
             mimetype='application/pdf',
             as_attachment=True,
-            download_name=f"scrapflow_{domain}.pdf"
+            download_name=f"menutech_{domain}.pdf"
         )
 
     # Export SVG Summary Card
@@ -177,23 +175,23 @@ def export_file(fmt):
     .card {{ fill: #1e293b; rx: 12px; stroke: #334155; stroke-width: 1; }}
     .header-title {{ fill: #ffffff; font-family: sans-serif; font-weight: bold; font-size: 22px; }}
     .subtitle {{ fill: #94a3b8; font-family: sans-serif; font-size: 13px; }}
-    .badge {{ fill: #6366f1; rx: 4px; }}
+    .badge {{ fill: #f97316; rx: 4px; }}
     .badge-text {{ fill: #ffffff; font-family: sans-serif; font-weight: bold; font-size: 11px; }}
-    .block-title {{ fill: #38bdf8; font-family: sans-serif; font-weight: bold; font-size: 14px; }}
+    .block-title {{ fill: #f97316; font-family: sans-serif; font-weight: bold; font-size: 14px; }}
     .block-text {{ fill: #cbd5e1; font-family: sans-serif; font-size: 12px; }}
   </style>
   <rect width="100%" height="100%" class="bg" />
 
   <!-- Header Card -->
   <rect x="20" y="20" width="760" height="100" class="card" />
-  <text x="40" y="55" class="header-title">SCRAPFLOW - Resumen de Extracción</text>
+  <text x="40" y="55" class="header-title">MENUTECH - Resumen de Extracción</text>
   <text x="40" y="80" class="subtitle">URL: {url[:70]}</text>
-  <text x="40" y="98" class="subtitle">Total Bloques: {len(blocks)} | Scrapling Engine</text>
+  <text x="40" y="98" class="subtitle">Total Bloques: {len(blocks)} | MENUTECH Web Engine</text>
 
   <!-- Blocks -->
 '''
         y_offset = 140
-        for b in blocks[:15]:  # Render top 15 blocks in SVG card
+        for b in blocks[:15]:
             clean_content = b['content'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')[:80]
             svg_content += f'''
   <rect x="20" y="{y_offset}" width="760" height="35" class="card" />
@@ -206,7 +204,7 @@ def export_file(fmt):
         return Response(
             svg_content,
             mimetype="image/svg+xml",
-            headers={"Content-Disposition": f"attachment;filename=scrapflow_{domain}.svg"}
+            headers={"Content-Disposition": f"attachment;filename=menutech_{domain}.svg"}
         )
 
     return jsonify({"status": "error", "message": "Formato no soportado."}), 400

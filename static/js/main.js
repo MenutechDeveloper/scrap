@@ -1,7 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
   const scraperForm = document.getElementById('scraperForm');
   const urlInput = document.getElementById('urlInput');
-  const selectorInput = document.getElementById('selectorInput');
   const loader = document.getElementById('loader');
   const resultsSection = document.getElementById('resultsSection');
   const blocksGrid = document.getElementById('blocksGrid');
@@ -24,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function getTagClass(type) {
     switch(type) {
+      case 'business': return 'tag-business';
       case 'heading': return 'tag-heading';
       case 'paragraph': return 'tag-paragraph';
       case 'link': return 'tag-link';
@@ -37,8 +37,6 @@ document.addEventListener('DOMContentLoaded', () => {
   scraperForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const url = urlInput.value.trim();
-    const selector = selectorInput.value.trim();
-    const mode = document.querySelector('input[name="fetchMode"]:checked').value;
 
     if (!url) return;
 
@@ -50,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch('/scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, selector, mode })
+        body: JSON.stringify({ url })
       });
 
       const data = await response.json();
@@ -78,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
     blocksGrid.innerHTML = '';
 
     if (blocks.length === 0) {
-      blocksGrid.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">No se encontraron elementos con el criterio especificado.</p>';
+      blocksGrid.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px;">No se encontraron elementos en el sitio.</p>';
       return;
     }
 
@@ -95,20 +93,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
       let extraLinkHtml = '';
       if (block.link_url) {
-        extraLinkHtml = `<div style="margin-top: 8px; font-size: 13px;"><a href="${block.link_url}" target="_blank" style="color: var(--accent-cyan); text-decoration: underline;">🔗 ${block.link_url}</a></div>`;
+        extraLinkHtml = `<div style="margin-top: 8px; font-size: 13px;"><a href="${block.link_url}" target="_blank" style="color: var(--accent-primary); text-decoration: underline;">Link: ${block.link_url}</a></div>`;
       }
 
       card.innerHTML = `
         <div class="card-top">
           <span class="card-tag ${tagClass}">#${block.id} • ${block.type}</span>
           <button class="btn-copy" data-id="${block.id}">
-            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-            </svg>
             Copiar Bloque
           </button>
         </div>
-        <div style="font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">${block.title}</div>
+        <div style="font-size: 14px; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">${escapeHtml(block.title)}</div>
         <div class="card-content">${escapeHtml(block.content)}</div>
         ${mediaHtml}
         ${extraLinkHtml}

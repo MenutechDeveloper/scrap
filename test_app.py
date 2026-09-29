@@ -7,15 +7,13 @@ class AppTestCase(unittest.TestCase):
         self.client = app.test_client()
 
     def test_home_route(self):
-        # Even before index.html is written, route should be callable or 500 if missing template
         response = self.client.get('/')
-        # When template is absent it might be 500 or 200 once created.
-        self.assertIn(response.status_code, [200, 500])
+        self.assertEqual(response.status_code, 200)
 
     def test_scrape_endpoint(self):
         response = self.client.post(
             '/scrape',
-            data=json.dumps({'url': 'https://example.com', 'mode': 'fast'}),
+            data=json.dumps({'url': 'https://example.com'}),
             content_type='application/json'
         )
         self.assertEqual(response.status_code, 200)
@@ -25,12 +23,11 @@ class AppTestCase(unittest.TestCase):
         self.assertGreater(data['total_blocks'], 0)
 
     def test_export_txt(self):
-        # Perform a scrape first to populate cache
         self.client.post('/scrape', data=json.dumps({'url': 'https://example.com'}), content_type='application/json')
         res = self.client.get('/export/txt')
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.mimetype, 'text/plain')
-        self.assertIn(b'SCRAPFLOW', res.data)
+        self.assertIn(b'MENUTECH', res.data)
 
     def test_export_csv_and_sheets(self):
         self.client.post('/scrape', data=json.dumps({'url': 'https://example.com'}), content_type='application/json')
