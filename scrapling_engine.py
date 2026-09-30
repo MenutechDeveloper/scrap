@@ -26,17 +26,21 @@ class ScrapingEngine:
             url = "https://" + url
 
         domain = urllib.parse.urlparse(url).netloc
-        is_google = "google." in domain.lower() or "udm=local" in url or "tbm=lcl" in url
+        is_google = "google." in domain.lower() or "udm=local" in url or "tbm=lcl" in url or "maps" in domain.lower() or "/maps/" in url
 
         html = ""
         title = ""
         blocks = []
         block_id = 1
 
-        # Extract search query if present
+        # Extract search query if present across different Google URL parameters or path
         parsed_url = urllib.parse.urlparse(url)
         query_params = urllib.parse.parse_qs(parsed_url.query)
-        search_query = query_params.get('q', [''])[0]
+        search_query = query_params.get('q', [''])[0] or query_params.get('query', [''])[0]
+        if not search_query and '/maps/search/' in parsed_url.path:
+            match = re.search(r'/maps/search/([^/?#]+)', parsed_url.path)
+            if match:
+                search_query = urllib.parse.unquote(match.group(1)).replace('+', ' ')
 
         # Handle Google Search / Local or stealth requests via Playwright Chromium
         if is_google or mode in ["stealth", "playwright"]:
@@ -50,15 +54,17 @@ class ScrapingEngine:
                     )
                     page = context.new_page()
 
-                    # Attempt 1: Try direct Google Search / Local URL
+                    # Attempt 1: Try direct Google Search / Local page if it contains udm=local or tbm=lcl
                     cards = []
-                    try:
-                        page.goto(url, timeout=timeout * 1000, wait_until='networkidle')
-                        if 'sorry' not in page.url:
-                            title = page.title()
-                            cards = page.query_selector_all('div.VkpGBb')
-                    except Exception:
-                        pass
+                    if 'udm=local' in url or 'tbm=lcl' in url:
+                        try:
+                            page.goto(url, timeout=timeout * 1000, wait_until='domcontentloaded')
+                            page.wait_for_timeout(2000)
+                            if 'sorry' not in page.url:
+                                title = page.title()
+                                cards = page.query_selector_all('div.VkpGBb')
+                        except Exception:
+                            pass
 
                     # Process direct Google Local business cards if available
                     if cards:
@@ -164,13 +170,13 @@ class ScrapingEngine:
                             except Exception:
                                 pass
 
-                    # Attempt 2: If direct search hit bot check or yielded no business cards, use Google Maps Search!
+                    # Attempt 2: Google Maps Search mode for Maps URLs or fallback if direct search failed
                     if not blocks and (is_google or search_query):
                         fallback_query = search_query if search_query else "restaurantes"
-                        maps_url = f"https://www.google.com/maps/search/{urllib.parse.quote(fallback_query)}"
+                        maps_target_url = url if ("/maps/" in url or "maps.google" in url) else f"https://www.google.com/maps/search/{urllib.parse.quote(fallback_query)}"
                         try:
-                            page.goto(maps_url, timeout=timeout * 1000, wait_until='networkidle')
-                            page.wait_for_timeout(1000)
+                            page.goto(maps_target_url, timeout=timeout * 1000, wait_until='domcontentloaded')
+                            page.wait_for_timeout(2000)
                             title = page.title()
 
                             pane = page.query_selector('div[role="feed"]')
