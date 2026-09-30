@@ -33,6 +33,11 @@ class ScrapingEngine:
         blocks = []
         block_id = 1
 
+        # Extract search query if present
+        parsed_url = urllib.parse.urlparse(url)
+        query_params = urllib.parse.parse_qs(parsed_url.query)
+        search_query = query_params.get('q', [''])[0]
+
         # Handle Google Search / Local or stealth requests via Playwright Chromium
         if is_google or mode in ["stealth", "playwright"]:
             try:
@@ -45,44 +50,31 @@ class ScrapingEngine:
                     )
                     page = context.new_page()
 
-                    # Retry navigation if redirected to sorry/index
-                    for attempt in range(3):
-                        try:
-                            page.goto(url, timeout=timeout * 1000, wait_until='networkidle')
-                            if 'sorry' not in page.url:
-                                break
-                        except Exception:
-                            try:
-                                page.goto(url, timeout=timeout * 1000, wait_until='domcontentloaded')
-                                page.wait_for_timeout(2000)
-                                if 'sorry' not in page.url:
-                                    break
-                            except Exception:
-                                pass
-                        time.sleep(1)
+                    # Attempt 1: Try direct Google Search / Local URL
+                    cards = []
+                    try:
+                        page.goto(url, timeout=timeout * 1000, wait_until='networkidle')
+                        if 'sorry' not in page.url:
+                            title = page.title()
+                            cards = page.query_selector_all('div.VkpGBb')
+                    except Exception:
+                        pass
 
-                    title = page.title()
-
-                    # Check for Google Local business listing cards
-                    cards = page.query_selector_all('div.VkpGBb')
+                    # Process direct Google Local business cards if available
                     if cards:
                         for i, card in enumerate(cards):
                             try:
-                                # Name scoped to card
                                 name_el = card.query_selector('.OSrA4b, .oSGA3b, [role="heading"], div.dbg0pd')
                                 name = name_el.inner_text().strip() if name_el else f"Negocio #{i + 1}"
 
-                                # Click card to open detail view / drawer
                                 try:
                                     card.click()
-                                    page.wait_for_timeout(1000)
+                                    page.wait_for_timeout(800)
                                 except Exception:
                                     pass
 
-                                # Find detail drawer panel container
                                 detail_panel = page.query_selector('div.xpdopen, div.LUdaP, div[data-attrid*="location"], div#rhs, div.rhs')
 
-                                # Phone (scoped to detail panel or card)
                                 phone = 'N/A'
                                 phone_elem = detail_panel.query_selector('a[href^="tel:"]') if detail_panel else None
                                 if not phone_elem:
@@ -96,7 +88,6 @@ class ScrapingEngine:
                                     if pm:
                                         phone = pm.group(0)
 
-                                # External Website (scoped to detail panel or card)
                                 website = ''
                                 web_elem = None
                                 if detail_panel:
@@ -110,7 +101,6 @@ class ScrapingEngine:
                                         parsed = urllib.parse.parse_qs(urllib.parse.urlparse(website).query)
                                         website = parsed.get('q', [''])[0]
 
-                                # Address (scoped to detail panel or card)
                                 address = 'N/A'
                                 if detail_panel:
                                     maps_links = detail_panel.query_selector_all('a[href*="maps.google.com/maps"], a[href*="google.com/maps"], [data-dtype="d3adr"] span, span.LrzI3')
@@ -127,7 +117,6 @@ class ScrapingEngine:
                                             address = line
                                             break
 
-                                # Hours (scoped to detail panel or card)
                                 hours = 'N/A'
                                 hours_elem = detail_panel.query_selector('div[data-dtype="d3oh"], div.t77a6, span.pJ33ie') if detail_panel else None
                                 if not hours_elem:
@@ -141,7 +130,6 @@ class ScrapingEngine:
                                             hours = line.strip()
                                             break
 
-                                # Fallback Google Maps link if no website found
                                 if not website and address != 'N/A':
                                     query_str = urllib.parse.quote(f"{name} {address}")
                                     website = f"https://www.google.com/maps/search/?api=1&query={query_str}"
@@ -175,6 +163,112 @@ class ScrapingEngine:
                                 block_id += 1
                             except Exception:
                                 pass
+
+                    # Attempt 2: If direct search hit bot check or yielded no business cards, use Google Maps Search!
+                    if not blocks and (is_google or search_query):
+                        fallback_query = search_query if search_query else "restaurantes"
+                        maps_url = f"https://www.google.com/maps/search/{urllib.parse.quote(fallback_query)}"
+                        try:
+                            page.goto(maps_url, timeout=timeout * 1000, wait_until='networkidle')
+                            page.wait_for_timeout(1000)
+                            title = page.title()
+
+                            pane = page.query_selector('div[role="feed"]')
+                            if pane:
+                                for _ in range(3):
+                                    page.evaluate('(elem) => elem.scrollBy(0, 1500)', pane)
+                                    page.wait_for_timeout(400)
+
+                            place_count = len(page.query_selector_all('div.Nv2PK'))
+
+                            for i in range(place_count):
+                                try:
+                                    places = page.query_selector_all('div.Nv2PK')
+                                    if i >= len(places):
+                                        break
+                                    place = places[i]
+
+                                    name_el = place.query_selector('div.qBF1Pd, font, div.fontHeadlineSmall')
+                                    name = name_el.inner_text().strip() if name_el else f"Negocio #{i + 1}"
+
+                                    card_text = place.inner_text()
+                                    lines = [l.strip() for l in card_text.split('\n') if l.strip()]
+
+                                    address = 'N/A'
+                                    for line in lines:
+                                        if re.search(r'\b\d+\s+[A-Za-z0-9\s\.\,\#\-]+', line) and not 'min' in line and not '$' in line:
+                                            address = line
+                                            break
+
+                                    hours = 'N/A'
+                                    for line in lines:
+                                        if any(kw in line.lower() for kw in ['abierto', 'cerrado', 'abre', 'cierra', '24 horas']):
+                                            hours = line
+                                            break
+
+                                    website = ''
+                                    phone = 'N/A'
+
+                                    try:
+                                        place.click()
+                                        page.wait_for_timeout(800)
+
+                                        phone_el = page.query_selector('button[data-item-id*="phone"]')
+                                        if phone_el:
+                                            phone = phone_el.inner_text().replace('', '').replace('\n', ' ').strip()
+
+                                        web_el = page.query_selector('a[data-item-id*="authority"]')
+                                        if web_el:
+                                            website = web_el.get_attribute('href') or ''
+
+                                        addr_el = page.query_selector('button[data-item-id*="address"]')
+                                        if addr_el:
+                                            full_addr = addr_el.inner_text().replace('', '').replace('\n', ' ').strip()
+                                            if full_addr:
+                                                address = full_addr
+
+                                        hours_el = page.query_selector('div[data-item-id*="oh"], [aria-label*="Horas" i], [aria-label*="Horario" i]')
+                                        if hours_el:
+                                            full_hours = hours_el.inner_text().replace('', '').replace('\n', ' ').strip()
+                                            if full_hours:
+                                                hours = full_hours
+                                    except Exception:
+                                        pass
+
+                                    if not website and address != 'N/A':
+                                        q_str = urllib.parse.quote(f"{name} {address}")
+                                        website = f"https://www.google.com/maps/search/?api=1&query={q_str}"
+
+                                    content_str = (
+                                        f"Nombre: {name}\n"
+                                        f"Dirección: {address}\n"
+                                        f"Teléfono: {phone}\n"
+                                        f"Website / Link: {website if website else 'N/A'}\n"
+                                        f"Horario: {hours}\n\n"
+                                        f"Detalles: {card_text.replace('\n', ' | ')}"
+                                    )
+
+                                    blocks.append({
+                                        "id": block_id,
+                                        "type": "business",
+                                        "tag": "negocio",
+                                        "title": f"Negocio: {name}",
+                                        "content": content_str,
+                                        "link_url": website if website else None,
+                                        "url": url,
+                                        "business_data": {
+                                            "name": name,
+                                            "phone": phone,
+                                            "address": address,
+                                            "website": website,
+                                            "hours": hours
+                                        }
+                                    })
+                                    block_id += 1
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
 
                     html = page.content()
                     browser.close()
@@ -262,7 +356,6 @@ class ScrapingEngine:
 
         # Extract standard web blocks if no business cards found
         if not blocks and soup:
-            # Custom selector if provided
             if custom_selector and custom_selector.strip():
                 sel = Selector(html)
                 selected_items = sel.css(custom_selector.strip())
@@ -279,7 +372,6 @@ class ScrapingEngine:
                         })
                         block_id += 1
 
-            # Headings
             headings = soup.find_all(['h1', 'h2', 'h3', 'h4'])
             for heading in headings:
                 text = heading.get_text(strip=True)
@@ -294,7 +386,6 @@ class ScrapingEngine:
                     })
                     block_id += 1
 
-            # Paragraphs
             paragraphs = soup.find_all('p')
             for p in paragraphs:
                 text = p.get_text(strip=True)
@@ -309,7 +400,6 @@ class ScrapingEngine:
                     })
                     block_id += 1
 
-            # Links
             extracted_links = set()
             for link in soup.find_all('a', href=True):
                 text = link.get_text(strip=True)
@@ -331,7 +421,6 @@ class ScrapingEngine:
                         if len(extracted_links) >= 30:
                             break
 
-            # Images
             extracted_imgs = set()
             for img in soup.find_all('img', src=True):
                 src = img['src'].strip()
@@ -353,7 +442,6 @@ class ScrapingEngine:
                         if len(extracted_imgs) >= 20:
                             break
 
-            # Tables
             tables = soup.find_all('table')
             for t_idx, table in enumerate(tables, 1):
                 rows = table.find_all('tr')
